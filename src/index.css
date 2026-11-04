@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #e8f5ff;
+  background: #05080d;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #38dfff;
+  outline-offset: 4px;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.3);
+  color: white;
+}
+
+.grid-background {
+  background-image:
+    linear-gradient(rgba(60, 180, 220, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(60, 180, 220, 0.035) 1px, transparent 1px);
+  background-size: 55px 55px;
+}
+
+.glass-panel {
+  background: rgba(12, 20, 31, 0.72);
+  border: 1px solid rgba(130, 190, 220, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, #e8fbff 10%, #45dcff 55%, #8b9cff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glow {
+  box-shadow: 0 0 35px rgba(34, 211, 238, 0.18);
+}
+
+.glow-text {
+  text-shadow: 0 0 25px rgba(34, 211, 238, 0.35);
+}
+
+.hero-vignette {
+  background: radial-gradient(
+    ellipse at 65% 45%,
+    transparent 0%,
+    rgba(5, 8, 13, 0.15) 50%,
+    #05080d 100%
+  );
+}
+
+canvas {
+  display: block;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #05080d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1b3445;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #28617a;
+}
