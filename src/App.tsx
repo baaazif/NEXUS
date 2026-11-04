@@ -292,7 +292,7 @@ function CameraPreview({
   onCursorUpdate,
   onPinchStateChange,
 }: {
-  onRotateDelta: (deltaX: number, deltaY: number) => void
+  onRotateDelta: (deltaX: number, deltaY: number, deltaRoll: number) => void
   onZoomDelta: (delta: number) => void
   onCursorUpdate: (cursor: HandCursorPosition) => void
   onPinchStateChange: (active: boolean) => void
@@ -313,6 +313,7 @@ function CameraPreview({
   const actionStateRef = useRef<GestureActionState>('idle')
   const previousPrimaryGestureRef = useRef<TrackedGesture | null>(null)
   const previousPalmPositionRef = useRef<{ x: number; y: number } | null>(null)
+  const previousPalmRollRef = useRef<number | null>(null)
   const previousVZoomRelativeDistanceRef = useRef<number | null>(null)
   const vZoomStartDistanceRef = useRef<number | null>(null)
   const filteredVZoomDistanceRef = useRef<number | null>(null)
@@ -397,6 +398,7 @@ function CameraPreview({
     actionStateRef.current = 'idle'
     previousPrimaryGestureRef.current = null
     previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
     openPalmSinceRef.current = null
     previousVZoomRelativeDistanceRef.current = null
     vZoomStartDistanceRef.current = null
@@ -423,6 +425,7 @@ function CameraPreview({
     actionStateRef.current = 'idle'
     previousPrimaryGestureRef.current = null
     previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
     openPalmSinceRef.current = null
     previousVZoomRelativeDistanceRef.current = null
     vZoomStartDistanceRef.current = null
@@ -725,6 +728,7 @@ function CameraPreview({
                   onPinchStateChange(false)
                 }
                 previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
                 openPalmSinceRef.current = null
                 previousVZoomRelativeDistanceRef.current = null
                 vZoomStartDistanceRef.current = null
@@ -745,6 +749,7 @@ function CameraPreview({
                     actionStateRef.current = nextState
                     setActionState(nextState)
                     previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
                     previousVZoomRelativeDistanceRef.current = null
                     vZoomStartDistanceRef.current = null
                     filteredVZoomDistanceRef.current = null
@@ -756,6 +761,7 @@ function CameraPreview({
                     actionStateRef.current = nextState
                     setActionState(nextState)
                     previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
                     if (primaryGesture !== 'V-Zoom') {
                       previousVZoomRelativeDistanceRef.current = null
                       vZoomStartDistanceRef.current = null
@@ -767,6 +773,7 @@ function CameraPreview({
 
                 if (actionStateRef.current === 'locked') {
                   previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
                   openPalmSinceRef.current = null
                   previousVZoomRelativeDistanceRef.current = null
                   vZoomStartDistanceRef.current = null
@@ -812,6 +819,7 @@ function CameraPreview({
                     }
 
                     previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
                   } else {
                     previousVZoomRelativeDistanceRef.current = null
                     vZoomStartDistanceRef.current = null
@@ -833,6 +841,26 @@ function CameraPreview({
                             x: palmPoints.reduce((sum, point) => sum + point.x, 0) / palmPoints.length,
                             y: palmPoints.reduce((sum, point) => sum + point.y, 0) / palmPoints.length,
                           }
+                          // Estimate palm roll from the line across the knuckles.
+                          // Wrist rotation changes this angle even when the palm stays in place.
+                          const indexMcp = landmarks[5]
+                          const pinkyMcp = landmarks[17]
+                          const palmRoll = Math.atan2(
+                            pinkyMcp.y - indexMcp.y,
+                            pinkyMcp.x - indexMcp.x,
+                          )
+                          const previousRoll = previousPalmRollRef.current
+                          let deltaRoll = 0
+                          if (previousRoll !== null) {
+                            const angleDifference = palmRoll - previousRoll
+                            const wrappedDifference = Math.atan2(
+                              Math.sin(angleDifference),
+                              Math.cos(angleDifference),
+                            )
+                            deltaRoll = Math.abs(wrappedDifference) < 0.003
+                              ? 0
+                              : THREE.MathUtils.clamp(wrappedDifference * 0.85, -0.10, 0.10)
+                          }
                           const previousPosition = previousPalmPositionRef.current
                           if (previousPosition) {
                             // MediaPipe coordinates are normalized to [0, 1]. The
@@ -848,19 +876,24 @@ function CameraPreview({
                             const deltaY = Math.abs(rawDeltaY) < 0.0015
                               ? 0
                               : THREE.MathUtils.clamp(rawDeltaY, -0.08, 0.08)
-                            if (deltaX !== 0 || deltaY !== 0) {
-                              onRotateDelta(deltaX, deltaY)
+                            if (deltaX !== 0 || deltaY !== 0 || deltaRoll !== 0) {
+                              onRotateDelta(deltaX, deltaY, deltaRoll)
                             }
+                          } else if (deltaRoll !== 0) {
+                            onRotateDelta(0, 0, deltaRoll)
                           }
                           previousPalmPositionRef.current = palmPosition
+                          previousPalmRollRef.current = palmRoll
                         }
                       } else {
                         // Do not accumulate movement while waiting for the open-palm gate.
                         previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
                       }
                     } else {
                       openPalmSinceRef.current = null
                       previousPalmPositionRef.current = null
+    previousPalmRollRef.current = null
                     }
                   }
                 }
@@ -1346,19 +1379,33 @@ function Workspace({ onBack }: { onBack: () => void }) {
   }
 
   // Apply high-frequency transforms directly to Three.js. No React render per frame.
-  const handleGestureRotation = (deltaX: number, deltaY: number) => {
+  const handleGestureRotation = (deltaX: number, deltaY: number, deltaRoll: number) => {
     const group = modelGroupRef.current
-    if (!group || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return
+    if (
+      !group ||
+      !Number.isFinite(deltaX) ||
+      !Number.isFinite(deltaY) ||
+      !Number.isFinite(deltaRoll)
+    ) return
 
     // Trackball-style rotation: each hand movement produces one 3D rotation
     // around an axis perpendicular to the movement. Diagonal movement therefore
     // creates a combined 3D turn instead of two independent Euler updates.
     const movement = Math.hypot(deltaX, deltaY)
-    if (movement < 0.0001) return
+    if (movement >= 0.0001) {
+      const rotationAxis = new THREE.Vector3(deltaY, deltaX, 0).normalize()
+      const rotationStep = new THREE.Quaternion().setFromAxisAngle(rotationAxis, movement)
+      group.quaternion.premultiply(rotationStep).normalize()
+    }
 
-    const rotationAxis = new THREE.Vector3(deltaY, deltaX, 0).normalize()
-    const rotationStep = new THREE.Quaternion().setFromAxisAngle(rotationAxis, movement)
-    group.quaternion.premultiply(rotationStep).normalize()
+    // Wrist twist rolls the model around the camera-facing axis.
+    if (Math.abs(deltaRoll) >= 0.0001) {
+      const rollStep = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1),
+        -deltaRoll,
+      )
+      group.quaternion.premultiply(rollStep).normalize()
+    }
   }
 
   const handleGestureZoom = (delta: number) => {
